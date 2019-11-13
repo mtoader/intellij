@@ -911,11 +911,14 @@ def intellij_info_aspect_impl(target, ctx, semantics):
                 continue
             if k.endswith("-outputs"):
                 directs = k[:-(len("outputs"))] + "direct-deps"
-                update_set_in_dict(output_groups, directs, v)
+                output_groups[directs] = output_groups[directs] + [v] if directs in output_groups else [v]
                 continue
 
             # everything else gets rolled up transitively
-            update_set_in_dict(output_groups, k, v)
+            output_groups[k] = output_groups[k] + [v] if k in output_groups else [v]
+
+    for k, v in output_groups.items():
+        output_groups[k] = depset(transitive = output_groups[k])
 
     # Initialize the ide info dict, and corresponding output file
     # This will be passed to each language-specific handler to fill in as required
