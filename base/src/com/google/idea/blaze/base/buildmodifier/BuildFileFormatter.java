@@ -22,6 +22,7 @@ import com.google.idea.blaze.base.lang.buildfile.psi.BuildFile.BlazeFileType;
 import com.google.idea.common.formatter.FormatUtils.FileContentsProvider;
 import com.google.idea.common.formatter.FormatUtils.Replacements;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.TextRange;
 import java.io.BufferedReader;
 import java.io.File;
@@ -30,19 +31,26 @@ import java.io.InputStreamReader;
 import java.util.Collection;
 import javax.annotation.Nullable;
 
-/** Formats BUILD files using 'buildifier' */
+/**
+ * Formats BUILD files using 'buildifier'
+ */
 public class BuildFileFormatter {
 
   private static final Logger logger = Logger.getInstance(BuildFileFormatter.class);
 
   @Nullable
-  private static File getBuildifierBinary() {
+  private static ProcessBuilder getBuildifierProcessBuilder(Project project, BlazeFileType blazeFileType) {
+    ProcessBuilder processBuilder = new ProcessBuilder();
+
     for (BuildifierBinaryProvider provider : BuildifierBinaryProvider.EP_NAME.getExtensions()) {
-      File file = provider.getBuildifierBinary();
+      File file = provider.getBuildifierBinary(project);
       if (file != null) {
-        return file;
+        processBuilder.command(file.getAbsolutePath(), fileTypeArg(blazeFileType));
+        processBuilder.directory(provider.getBuildifierExecutionRoot(project));
+        return processBuilder;
       }
     }
+
     return null;
   }
 
@@ -51,10 +59,10 @@ public class BuildFileFormatter {
    * null if the formatting failed.
    */
   @Nullable
-  static Replacements getReplacements(
+  public static Replacements getReplacements(
       BlazeFileType fileType, FileContentsProvider fileContents, Collection<TextRange> ranges) {
-    File buildifierBinary = getBuildifierBinary();
-    if (buildifierBinary == null) {
+    ProcessBuilder processBuilder = getBuildifierProcessBuilder(fileContents.getProject(), fileType);
+    if (processBuilder == null) {
       return null;
     }
     String text = fileContents.getFileContentsIfUnchanged();
@@ -65,7 +73,7 @@ public class BuildFileFormatter {
     try {
       for (TextRange range : ranges) {
         String input = range.substring(text);
-        String result = formatText(buildifierBinary, fileType, input);
+        String result = formatText(processBuilder, input);
         if (result == null) {
           return null;
         }
@@ -86,17 +94,31 @@ public class BuildFileFormatter {
    * failed.
    */
   @Nullable
-  private static String formatText(File buildifierBinary, BlazeFileType fileType, String inputText)
-      throws InterruptedException, IOException {
-    Process process = new ProcessBuilder(buildifierBinary.getPath(), fileTypeArg(fileType)).start();
+  private static String formatText(ProcessBuilder processBuilder, String inputText)
+  throws InterruptedException, IOException {
+    Process process = processBuilder.start();
     process.getOutputStream().write(inputText.getBytes(UTF_8));
     process.getOutputStream().close();
 
     BufferedReader reader =
         new BufferedReader(new InputStreamReader(process.getInputStream(), UTF_8));
+    BufferedReader stdError =
+        new BufferedReader(new InputStreamReader(process.getErrorStream(), UTF_8));
     String formattedText = CharStreams.toString(reader);
+    String formatterError = CharStreams.toString(stdError);
     process.waitFor();
     return process.exitValue() != 0 ? null : formattedText;
+  }
+
+  /**
+   * Passes the input text to buildifier, returning the formatted output text, or null if formatting
+   * failed.
+   */
+  @Nullable
+  static public String formatText(Project project, BlazeFileType fileType, String inputText)
+  throws InterruptedException, IOException {
+    ProcessBuilder processBuilder = getBuildifierProcessBuilder(project, fileType);
+    return processBuilder != null ? formatText(processBuilder, inputText) : null;
   }
 
   private static String fileTypeArg(BlazeFileType fileType) {
