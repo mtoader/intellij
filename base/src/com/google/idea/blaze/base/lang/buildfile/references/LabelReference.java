@@ -120,9 +120,9 @@ public class LabelReference extends PsiReferenceBase<StringLiteral> {
   }
 
   private BuildLookupElement[] getFileLookups(String labelString) {
-    if (labelString.startsWith("//") || labelString.equals("/")) {
-      return getNonLocalFileLookups(labelString);
-    }
+//    if (labelString.startsWith("//") || labelString.equals("/")) {
+//      return getNonLocalFileLookups(labelString);
+//    }
     return getPackageLocalFileLookups(labelString);
   }
 

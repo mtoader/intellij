@@ -28,6 +28,8 @@ import com.google.idea.blaze.base.sync.data.BlazeProjectDataManager;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.openapi.editor.Editor;
 import javax.annotation.Nullable;
+
+import com.intellij.psi.PsiFile;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;

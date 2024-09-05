@@ -21,9 +21,12 @@ import com.google.idea.blaze.base.lang.buildfile.psi.BuildFile;
 import com.google.idea.blaze.base.lang.buildfile.psi.StringLiteral;
 import com.google.idea.blaze.base.lang.buildfile.search.BlazePackage;
 import com.google.idea.blaze.base.model.primitives.Label;
+import com.google.idea.blaze.base.model.primitives.TargetName;
 import com.google.idea.blaze.base.model.primitives.WorkspacePath;
 import com.google.idea.blaze.base.settings.Blaze;
+import com.google.idea.blaze.base.sync.workspace.WorkspaceHelper;
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.NullableLazyValue;
 import com.intellij.openapi.util.text.StringUtil;
@@ -34,12 +37,15 @@ import com.intellij.psi.PsiManager;
 import com.intellij.util.PathUtil;
 import com.intellij.util.PlatformIcons;
 import icons.BlazeIcons;
+
 import javax.annotation.Nullable;
 import javax.swing.Icon;
+import java.io.File;
 
 /** The data relevant to finding file lookups. */
 public class FileLookupData {
   private static final ImmutableSet<String> BUILDFILE_NAMES = ImmutableSet.of("BUILD", "BUILD.bazel");
+  private static final ImmutableSet<String> IGNORED_FILES = ImmutableSet.of(".git", ".github", ".idea", ".kokoro", ".cloudbuild");
 
   /** The type of path string format */
   public enum PathFormat {
@@ -69,20 +75,17 @@ public class FileLookupData {
       // it's a package-local reference
       return null;
     }
-    // handle the single '/' case by calling twice.
-    String relativePath = StringUtil.trimStart(StringUtil.trimStart(originalLabel, "/"), "/");
-    if (relativePath.startsWith("/")) {
-      return null;
-    }
+
+    String relativePath = LabelUtils.getPackagePathComponent(originalLabel);
     boolean onlyDirectories = pathFormat != PathFormat.NonLocalWithoutInitialBackslashes;
-    VirtualFileFilter filter = vf -> !onlyDirectories || vf.isDirectory();
+    VirtualFileFilter filter = vf -> (!onlyDirectories || vf.isDirectory()) && (!IGNORED_FILES.contains(vf.getName()));
     return new FileLookupData(
         originalLabel, containingFile, null, relativePath, pathFormat, quoteType, filter);
   }
 
   @Nullable
   public static FileLookupData packageLocalFileLookup(String originalLabel, StringLiteral element) {
-    if (originalLabel.startsWith("/")) {
+    if (originalLabel.startsWith("/") || originalLabel.startsWith("@")) {
       return null;
     }
     BlazePackage blazePackage = element.getBlazePackage();
@@ -117,11 +120,15 @@ public class FileLookupData {
 
   private final String originalLabel;
   private final BuildFile containingFile;
-  @Nullable private final String containingPackage;
+  @Nullable
+  private final String containingPackage;
+  @Nullable
+  public final String externalWorkspace;
   public final String filePathFragment;
   public final PathFormat pathFormat;
   private final QuoteType quoteType;
-  @Nullable private final VirtualFileFilter fileFilter;
+  @Nullable
+  private final VirtualFileFilter fileFilter;
 
   protected FileLookupData(
       String originalLabel,
@@ -136,12 +143,16 @@ public class FileLookupData {
     this.containingFile = containingFile;
     this.containingPackage = containingPackage;
     this.fileFilter = fileFilter;
-    this.filePathFragment = filePathFragment;
     this.pathFormat = pathFormat;
     this.quoteType = quoteType;
 
+    this.externalWorkspace = LabelUtils.getExternalWorkspaceComponent(originalLabel);
+
+    filePathFragment = !filePathFragment.isEmpty() ? filePathFragment : LabelUtils.getPackagePathComponent(originalLabel);
+    this.filePathFragment = StringUtil.trimStart(filePathFragment, "//");
+
     assert (pathFormat != PathFormat.PackageLocal
-        || (containingPackage != null && containingFile != null));
+                || (containingPackage != null && containingFile != null));
   }
 
   public boolean acceptFile(Project project, VirtualFile file) {

@@ -19,14 +19,16 @@ import com.google.idea.blaze.base.lang.buildfile.language.BuildFileLanguage;
 import com.google.idea.blaze.base.lang.buildfile.psi.StringLiteral;
 import com.intellij.codeInsight.lookup.CharFilter;
 import com.intellij.codeInsight.lookup.Lookup;
+import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiTreeUtil;
 import org.jetbrains.annotations.NotNull;
 
 import javax.annotation.Nullable;
 
-/** Allows '@' to be typed (and appended to completion) inside a label from a build file. */
+/** Allows '@' and '/' to be typed (and appended to completion) inside a label from a build file. */
 public final class BuildLabelCharFilter extends CharFilter {
+
   @Nullable
   public CharFilter.Result acceptChar(char c, int prefixLength, @NotNull Lookup lookup) {
     if (!lookup.isCompletion()) {
@@ -40,12 +42,18 @@ public final class BuildLabelCharFilter extends CharFilter {
       return null;
     }
 
+    LookupElement item = lookup.getCurrentItem();
     switch (c) {
       case '@':
         return Result.ADD_TO_PREFIX;
 
       case '/':
-        if (lookup.getCurrentItem() instanceof ExternalWorkspaceLookupElement) {
+        if (item instanceof ExternalWorkspaceLookupElement || item instanceof FilePathLookupElement) {
+          return Result.SELECT_ITEM_AND_FINISH_LOOKUP;
+        }
+
+      case ':':
+        if (item instanceof FilePathLookupElement) {
           return Result.SELECT_ITEM_AND_FINISH_LOOKUP;
         }
     }

@@ -25,6 +25,7 @@ import com.google.idea.blaze.base.lang.buildfile.psi.FuncallExpression;
 import com.google.idea.blaze.base.model.primitives.Label;
 import com.google.idea.blaze.base.model.primitives.TargetName;
 import com.google.idea.blaze.base.model.primitives.WorkspacePath;
+import com.google.idea.blaze.base.model.primitives.WorkspaceRoot;
 import com.google.idea.blaze.base.settings.Blaze;
 import com.google.idea.blaze.base.sync.projectview.ImportRoots;
 import com.google.idea.blaze.base.sync.workspace.WorkspaceHelper;
@@ -116,16 +117,25 @@ public class BuildReferenceManager {
 
   @Nullable
   public File resolvePackage(@Nullable WorkspacePath packagePath) {
-    return resolveWorkspaceRelativePath(packagePath != null ? packagePath.relativePath() : null);
+    return resolveWorkspaceRelativePath(packagePath != null ? packagePath.relativePath() : null, null /* TODO: Fix */);
   }
 
   @Nullable
-  private File resolveWorkspaceRelativePath(@Nullable String relativePath) {
-    WorkspacePathResolver pathResolver = getWorkspacePathResolver();
-    if (pathResolver == null || relativePath == null) {
-      return null;
+  private File resolveWorkspaceRelativePath(@Nullable String relativePath, @Nullable String workspace) {
+    if (workspace == null) {
+      WorkspacePathResolver pathResolver = getWorkspacePathResolver();
+      if (pathResolver == null || relativePath == null) {
+        return null;
+      }
+      return pathResolver.resolveToFile(relativePath);
     }
-    return pathResolver.resolveToFile(relativePath);
+
+    WorkspaceRoot workspaceRoot = WorkspaceHelper.getExternalWorkspace(project, workspace);
+    if (workspaceRoot != null) {
+      return workspaceRoot.absolutePathFor(relativePath).toFile();
+    }
+
+    return null;
   }
 
   @Nullable
@@ -145,14 +155,14 @@ public class BuildReferenceManager {
       // ignore invalid labels containing './', '../', etc.
       return BuildLookupElement.EMPTY_ARRAY;
     }
-    File file = resolveWorkspaceRelativePath(relativePath);
+    File file = resolveWorkspaceRelativePath(relativePath, lookupData.externalWorkspace);
 
     FileOperationProvider provider = FileOperationProvider.getInstance();
     String pathFragment = "";
     if (file == null || (!provider.isDirectory(file) && !relativePath.endsWith("/"))) {
       // we might be partway through a file name. Try the parent directory
       relativePath = PathUtil.getParentPath(relativePath);
-      file = resolveWorkspaceRelativePath(relativePath);
+      file = resolveWorkspaceRelativePath(relativePath, lookupData.externalWorkspace);
       pathFragment =
           StringUtil.trimStart(lookupData.filePathFragment.substring(relativePath.length()), "/");
     }
@@ -181,7 +191,7 @@ public class BuildReferenceManager {
         }
       }
       if (validChildren.isEmpty()) {
-        return uniqueLookup[0] != null ? uniqueLookup : BuildLookupElement.EMPTY_ARRAY;
+       return uniqueLookup[0] != null ? uniqueLookup : BuildLookupElement.EMPTY_ARRAY;
       }
       if (validChildren.size() > 1) {
         return uniqueLookup[0] != null ? uniqueLookup : lookupsForFiles(validChildren, lookupData);

@@ -3,20 +3,14 @@ package com.google.idea.blaze.base.lang.buildfile.completion;
 import com.google.common.collect.ImmutableList;
 import com.google.idea.blaze.base.ExternalWorkspaceFixture;
 import com.google.idea.blaze.base.lang.buildfile.BuildFileIntegrationTestCase;
-import com.google.idea.blaze.base.lang.buildfile.psi.BuildFile;
 import com.google.idea.blaze.base.model.ExternalWorkspaceData;
 import com.google.idea.blaze.base.model.primitives.ExternalWorkspace;
-import com.google.idea.blaze.base.model.primitives.WorkspacePath;
 import com.intellij.codeInsight.CodeInsightSettings;
-import com.intellij.codeInsight.lookup.Lookup;
 import com.intellij.codeInsight.lookup.LookupElement;
 import com.intellij.codeInsight.lookup.LookupEx;
-import com.intellij.openapi.editor.Editor;
 import com.intellij.psi.PsiFile;
-import org.junit.Ignore;
 import org.junit.Test;
 
-import static com.google.common.truth.ExpectFailure.expectFailure;
 import static com.google.common.truth.Truth.assertThat;
 
 public class ExternalWorkspaceCompletionTest extends BuildFileIntegrationTestCase {

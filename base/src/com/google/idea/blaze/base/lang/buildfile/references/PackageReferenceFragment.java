@@ -15,24 +15,50 @@
  */
 package com.google.idea.blaze.base.lang.buildfile.references;
 
+import com.google.idea.blaze.base.lang.buildfile.completion.BuildLookupElement;
+import com.google.idea.blaze.base.lang.buildfile.completion.FilePathLookupElement;
 import com.google.idea.blaze.base.lang.buildfile.psi.BuildFile;
 import com.google.idea.blaze.base.lang.buildfile.psi.StringLiteral;
 import com.google.idea.blaze.base.lang.buildfile.psi.util.PsiUtils;
 import com.google.idea.blaze.base.model.primitives.Label;
 import com.google.idea.blaze.base.model.primitives.WorkspacePath;
+import com.google.idea.blaze.base.model.primitives.WorkspaceRoot;
+import com.google.idea.blaze.base.sync.workspace.WorkspaceHelper;
 import com.intellij.lang.ASTNode;
 import com.intellij.openapi.util.TextRange;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiReference;
 import com.intellij.psi.PsiReferenceBase;
 import com.intellij.util.IncorrectOperationException;
 import com.intellij.util.PathUtil;
+
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.File;
 
 /** The label component preceding the colon. */
 public class PackageReferenceFragment extends PsiReferenceBase<StringLiteral> {
 
   public PackageReferenceFragment(LabelReference labelReference) {
-    super(labelReference.getElement(), labelReference.getRangeInElement(), labelReference.isSoft());
+    super(labelReference.getElement(), labelReference.isSoft());
+  }
+
+
+  @Override
+  public TextRange getRangeInElement() {
+    String rawText = myElement.getText();
+
+    TextRange unquotedRange = StringLiteral.textRangeInElement(rawText);
+    String labelText = unquotedRange.substring(rawText);
+
+    int packageStartIndex = labelText.indexOf("//");
+    int targetStartIndex = labelText.indexOf(":");
+
+    return TextRange.create(
+        packageStartIndex != -1 ? packageStartIndex + 2 : 0,
+        targetStartIndex != -1 ? targetStartIndex: labelText.length()
+    ).shiftRight(unquotedRange.getStartOffset());
   }
 
   @Nullable
@@ -45,31 +71,47 @@ public class PackageReferenceFragment extends PsiReferenceBase<StringLiteral> {
     return WorkspacePath.createIfValid(labelString.substring(2, endIndex));
   }
 
-  @Override
-  public TextRange getRangeInElement() {
-    String rawText = myElement.getText();
-    boolean valid = getWorkspacePath(myElement.getStringContents()) != null;
-    if (!valid) {
-      return TextRange.EMPTY_RANGE;
-    }
-    int endIndex = rawText.indexOf(':');
-    if (endIndex == -1) {
-      endIndex = rawText.length() - 1;
-    }
-    return new TextRange(1, endIndex);
-  }
-
   @Nullable
   @Override
   public BuildFile resolve() {
-    WorkspacePath workspacePath = getWorkspacePath(myElement.getStringContents());
-    return BuildReferenceManager.getInstance(myElement.getProject())
-        .resolveBlazePackage(workspacePath);
+    String unqualifiedPackagePath = getRangeInElement().substring(myElement.getText());
+    WorkspacePath workspacePath = WorkspacePath.createIfValid(unqualifiedPackagePath);
+
+    // check for context reference.
+    ExternalWorkspaceReferenceFragment workspaceReference = null;
+    for (PsiReference reference : myElement.getReferences()) {
+      if (reference instanceof ExternalWorkspaceReferenceFragment) {
+        workspaceReference = (ExternalWorkspaceReferenceFragment) reference;
+      }
+    }
+
+    if (workspaceReference != null) {
+      WorkspaceRoot externalWorkspace = WorkspaceHelper.getExternalWorkspace(
+          myElement.getProject(),
+          LabelUtils.getExternalWorkspaceComponent(myElement.getStringContents()));
+
+      if (externalWorkspace != null) {
+        File file = externalWorkspace.fileForPath(workspacePath != null ? workspacePath : new WorkspacePath(""));
+        return BuildReferenceManager.getInstance(myElement.getProject()).findBuildFile(file);
+      }
+    }
+
+    return BuildReferenceManager.getInstance(myElement.getProject()).resolveBlazePackage(workspacePath);
   }
 
   @Override
-  public Object[] getVariants() {
-    return EMPTY_ARRAY;
+  @Nonnull
+  public BuildLookupElement[] getVariants() {
+    String labelString = LabelUtils.trimToDummyIdentifier(myElement.getStringContents());
+    FileLookupData fileLookupData =
+        FileLookupData.nonLocalFileLookup(
+            labelString, myElement.getContainingFile(), QuoteType.NoQuotes, FileLookupData.PathFormat.NonLocalWithoutInitialBackslashesOnlyDirectories);
+
+    if (fileLookupData != null) {
+      return BuildReferenceManager.getInstance(myElement.getProject()).resolvePackageLookupElements(fileLookupData);
+    }
+
+    return FilePathLookupElement.EMPTY_ARRAY;
   }
 
   @Override

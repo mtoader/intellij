@@ -66,6 +66,13 @@ public abstract class BuildFileIntegrationTestCase extends BlazeIntegrationTestC
     return (BuildFile) file;
   }
 
+  protected BuildFile configureFile(WorkspacePath workspacePath, String... contentLines) {
+    PsiFile file = workspace.createPsiFile(workspacePath, contentLines);
+    assertThat(file).isInstanceOf(BuildFile.class);
+    testFixture.configureFromExistingVirtualFile(file.getVirtualFile());
+    return (BuildFile) file;
+  }
+
   protected void assertFileContents(VirtualFile file, String... contentLines) {
     assertFileContents(fileSystem.getPsiFile(file), contentLines);
   }

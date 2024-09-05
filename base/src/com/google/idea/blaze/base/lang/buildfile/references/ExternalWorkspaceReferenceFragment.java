@@ -61,8 +61,6 @@ public class ExternalWorkspaceReferenceFragment extends PsiReferenceBase<StringL
     int endIndex = rawText.indexOf("//");
     if (endIndex == -1) {
       endIndex = rawText.length() - quoteType.quoteString.length();
-    } else {
-      endIndex += 2;
     }
     return new TextRange(1, endIndex);
   }
